@@ -13,6 +13,7 @@ const clamp01 = (value) => Math.min(Math.max(value, 0), 1);
 export default function SpiralRibbon({
   phase = "inhale",
   phaseProgress = 0,
+  holdFollowsExhale = false,
   settings = {},
 }) {
   const canvasRef = useRef(null);
@@ -20,6 +21,7 @@ export default function SpiralRibbon({
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
   const targetProgressRef = useRef(0);
   const renderedProgressRef = useRef(0);
+  const holdStableProgressRef = useRef(null);
   const optionsRef = useRef({ ...DEFAULT_SETTINGS, ...settings });
 
   // Keep drawing options in a ref so the render loop can read updated values
@@ -35,14 +37,19 @@ export default function SpiralRibbon({
     let spiralProgress = 0;
     if (normalizedPhase === "inhale") {
       spiralProgress = normalizedProgress;
+      holdStableProgressRef.current = null;
     } else if (normalizedPhase === "hold") {
-      spiralProgress = 1;
+      if (holdStableProgressRef.current === null) {
+        holdStableProgressRef.current = holdFollowsExhale ? 0 : 1;
+      }
+      spiralProgress = holdStableProgressRef.current;
     } else if (normalizedPhase === "exhale") {
       spiralProgress = 1 - normalizedProgress;
+      holdStableProgressRef.current = null;
     }
 
     targetProgressRef.current = clamp01(spiralProgress);
-  }, [phase, phaseProgress]);
+  }, [phase, phaseProgress, holdFollowsExhale]);
 
   // Resize canvas to match parent bounds and devicePixelRatio.
   useEffect(() => {
@@ -88,12 +95,17 @@ export default function SpiralRibbon({
         return;
       }
 
-      // Ease toward the target progress to avoid snapping between phases.
-      const target = targetProgressRef.current;
-      const current = renderedProgressRef.current;
-      const easedProgress = current + (target - current) * 0.15;
-      renderedProgressRef.current =
-        Math.abs(easedProgress - target) < 0.001 ? target : easedProgress;
+     // Ease toward the target progress to avoid snapping between phases.
+     const target = targetProgressRef.current;
+     const current = renderedProgressRef.current;
+      let nextProgress = target;
+      if (!Object.is(current, target)) {
+        nextProgress = current + (target - current) * 0.15;
+        if (Math.abs(nextProgress - target) < 0.0005) {
+          nextProgress = target;
+        }
+      }
+      renderedProgressRef.current = clamp01(nextProgress);
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);

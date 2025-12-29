@@ -132,7 +132,7 @@ export default function BreathingCircle() {
   const [countdownPausedStep, setCountdownPausedStep] = useState(null);
   const [showPremiumPage, setShowPremiumPage] = useState(false);
   const [showSettingsPage, setShowSettingsPage] = useState(false);
-  const [bgVolume, setBgVolume] = useState(0.8);
+  const [bgVolume, setBgVolume] = useState(0);
   const [fxVolume, setFxVolume] = useState(1);
 
   const [roundCounter, setRoundCounter] = useState(0);
@@ -145,7 +145,7 @@ export default function BreathingCircle() {
   const phaseDurationRef = useRef(1);
   const pauseElapsedRef = useRef(0);
   const resumeFromPauseRef = useRef(false);
-  const lastAudioPhaseRef = useRef(null);
+  const prevPhaseIndexRef = useRef(null);
   const previewInitializedRef = useRef(false);
   const settingsPauseRef = useRef({
     pausedCountdown: false,
@@ -188,7 +188,6 @@ const beepRefs = {
       setRoundCounter(0);
       setPhaseProgress(0);
       resetPauseState();
-      lastAudioPhaseRef.current = null;
     }
 
     if (isCountdownActive) {
@@ -200,32 +199,6 @@ const beepRefs = {
     setConfigStep(1);
     setShowPremiumPage(true);
   };
-  const toggleBackgroundMusic = () => {
-    const audio = backgroundMusicRef.current;
-    if (!audio) return;
-
-    if (musicOn) {
-      audio.pause();
-      audio.currentTime = 0;
-      setMusicOn(false);
-      return;
-    }
-
-    audio.loop = true;
-    const playPromise = audio.play();
-
-    if (playPromise && typeof playPromise.then === "function") {
-      setMusicOn(true);
-      playPromise.catch(() => {
-        audio.pause();
-        audio.currentTime = 0;
-        setMusicOn(false);
-      });
-    } else {
-      setMusicOn(true);
-    }
-  };
-
   // Countdown before starting
   useEffect(() => {
     if (countdownStep === null) return;
@@ -377,10 +350,22 @@ const beepRefs = {
   }, []);
   useEffect(() => {
     const bgAudio = backgroundMusicRef.current;
-    if (bgAudio) {
-      bgAudio.volume = Math.min(Math.max(bgVolume, 0), 1);
+    if (!bgAudio) return;
+
+    bgAudio.loop = true;
+    const volume = Math.min(Math.max(bgVolume, 0), 1);
+    bgAudio.volume = volume;
+
+    if (volume > 0 && !musicOn) {
+      const playPromise = bgAudio.play();
+      if (playPromise && typeof playPromise.then === "function") {
+        playPromise.catch(() => {});
+      }
+    } else if (volume === 0 && musicOn) {
+      bgAudio.pause();
+      bgAudio.currentTime = 0;
     }
-  }, [bgVolume]);
+  }, [bgVolume, musicOn]);
   useEffect(() => {
     const volume = Math.min(Math.max(fxVolume, 0), 1);
     const applyVolume = (refs) => {
@@ -396,8 +381,12 @@ const beepRefs = {
 
   // Phase audio cues
   useEffect(() => {
-    if (!running || phaseIndex === null || !soundOn || isPaused) return;
-    if (lastAudioPhaseRef.current === phaseIndex) return;
+    if (!running || phaseIndex === null) {
+      prevPhaseIndexRef.current = phaseIndex;
+      return;
+    }
+    if (!soundOn || isPaused) return;
+    if (prevPhaseIndexRef.current === phaseIndex) return;
 
     const presetPhases = PRESETS[preset];
     const phaseRatio = presetPhases?.[phaseIndex];
@@ -406,11 +395,12 @@ const beepRefs = {
     const phaseName = getPhaseNameForPreset(preset, phaseIndex);
     if (!phaseName) return;
 
+    prevPhaseIndexRef.current = phaseIndex;
+
     if (useBeep) {
       const beepKey = PHASE_MAP[phaseName];
       const beepAudio = beepRefs[beepKey]?.current;
       if (!beepAudio) return;
-      lastAudioPhaseRef.current = phaseIndex;
       beepAudio.currentTime = 0;
       beepAudio.play().catch(() => {});
       return;
@@ -420,7 +410,6 @@ const beepRefs = {
     const audio = voiceSet?.[phaseName]?.current;
     if (!audio) return;
 
-    lastAudioPhaseRef.current = phaseIndex;
     audio.currentTime = 0;
     audio.play().catch(() => {});
   }, [running, phaseIndex, soundOn, useBeep, preset, voiceType, isPaused]);
@@ -460,7 +449,6 @@ const beepRefs = {
 
   const startExercise = () => {
     resetPauseState();
-    lastAudioPhaseRef.current = null;
     setRoundCounter(0);
     setPhaseIndex(null);
     setPhaseSecond(0);
@@ -619,6 +607,17 @@ const beepRefs = {
     return scale;
   };
   const circleScale = computeCircleScale();
+  const getPreviousPhaseName = () => {
+    if (phaseIndex === null) return null;
+    const presetPhases = phases;
+    if (!presetPhases || presetPhases.length === 0) return null;
+    const prevIndex =
+      (phaseIndex - 1 + presetPhases.length) % presetPhases.length;
+    return getPhaseNameForPreset(preset, prevIndex);
+  };
+  const previousPhaseName = getPreviousPhaseName();
+  const holdFollowsExhale =
+    currentPhase === "hold" && previousPhaseName === "exhale";
   const renderCircleVisual = () => (
     <>
       <div
@@ -643,6 +642,7 @@ const beepRefs = {
         <SpiralRibbon
           phase={currentPhase ?? "inhale"}
           phaseProgress={phaseProgress}
+          holdFollowsExhale={holdFollowsExhale}
           settings={SPIRAL_VISUAL_SETTINGS}
         />
       </div>
@@ -1034,16 +1034,8 @@ const beepRefs = {
       <div className="space-y-4">
         <h2 className="text-2xl font-semibold">Settings</h2>
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-slate-700">
-              Background music
-            </span>
-            <button
-              onClick={toggleBackgroundMusic}
-              className={`${buttonBaseClasses} px-3 py-1 text-xs`}
-            >
-              {musicOn ? "Turn Off" : "Turn On"}
-            </button>
+          <div className="text-sm font-semibold text-slate-700">
+            Background music volume
           </div>
           <input
             type="range"
