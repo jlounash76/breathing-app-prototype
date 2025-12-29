@@ -1002,7 +1002,7 @@ const beepRefs = {
           <li>Unlimited practice sessions.</li>
           <li>More breathing patterns and exercises.</li>
           <li>Personalize your experience with a selection of new sounds and visuals.</li>
-          <li>Unlock Performance, Yogic and Meditation packs to deepen your practice more with in-app purchases.</li>
+          <li>Unlock Performance, Yogic and Meditation packs to deepen your practice with in-app purchases.</li>
           <li>Save your favourite exercises and themes.</li>
           <li>Toggle Haptic feedback and dark or light mode.</li>
           <li>Wake-up and sleep functions.</li>
