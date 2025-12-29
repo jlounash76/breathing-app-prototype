@@ -9,6 +9,7 @@ const DEFAULT_SETTINGS = {
 };
 
 const clamp01 = (value) => Math.min(Math.max(value, 0), 1);
+const BASE_ANGLE = Math.PI / 2;
 
 export default function SpiralRibbon({
   phase = "inhale",
@@ -22,6 +23,7 @@ export default function SpiralRibbon({
   const targetProgressRef = useRef(0);
   const renderedProgressRef = useRef(0);
   const holdStableProgressRef = useRef(null);
+  const lastPhaseRef = useRef(null);
   const optionsRef = useRef({ ...DEFAULT_SETTINGS, ...settings });
 
   // Keep drawing options in a ref so the render loop can read updated values
@@ -95,17 +97,22 @@ export default function SpiralRibbon({
         return;
       }
 
-     // Ease toward the target progress to avoid snapping between phases.
-     const target = targetProgressRef.current;
-     const current = renderedProgressRef.current;
-      let nextProgress = target;
-      if (!Object.is(current, target)) {
-        nextProgress = current + (target - current) * 0.15;
-        if (Math.abs(nextProgress - target) < 0.0005) {
+      const currentPhase = phase ?? "inhale";
+      const target = targetProgressRef.current;
+      const current = renderedProgressRef.current;
+
+      if (lastPhaseRef.current !== currentPhase) {
+        renderedProgressRef.current = target;
+        lastPhaseRef.current = currentPhase;
+      } else if (currentPhase === "hold") {
+        renderedProgressRef.current = target;
+      } else {
+        let nextProgress = current + (target - current) * 0.18;
+        if (Math.abs(nextProgress - target) < 0.0002) {
           nextProgress = target;
         }
+        renderedProgressRef.current = clamp01(nextProgress);
       }
-      renderedProgressRef.current = clamp01(nextProgress);
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -137,15 +144,17 @@ export default function SpiralRibbon({
 
       for (let theta = 0; theta <= visibleTheta; theta += thetaStep) {
         const r = spiralScale * theta;
-        const x = centerX + r * Math.cos(theta);
-        const y = centerY + r * Math.sin(theta);
+        const angle = theta + BASE_ANGLE;
+        const x = centerX + r * Math.cos(angle);
+        const y = centerY + r * Math.sin(angle);
         ctx.lineTo(x, y);
       }
 
       // Ensure the spiral reaches the exact end of the visible arc.
       const finalR = spiralScale * visibleTheta;
-      const finalX = centerX + finalR * Math.cos(visibleTheta);
-      const finalY = centerY + finalR * Math.sin(visibleTheta);
+      const finalAngle = visibleTheta + BASE_ANGLE;
+      const finalX = centerX + finalR * Math.cos(finalAngle);
+      const finalY = centerY + finalR * Math.sin(finalAngle);
       ctx.lineTo(finalX, finalY);
 
       ctx.lineWidth = lineWidth;
