@@ -179,12 +179,10 @@ export default function BreathingCircle() {
     audioEl.preload = "auto";
     audioEl.load?.();
 
-    const prevMuted = audioEl.muted;
-    const prevVolume = audioEl.volume;
+    audioEl.muted = true;
+    audioEl.volume = 0;
 
     try {
-      audioEl.muted = true;
-      audioEl.volume = 0;
       await audioEl.play();
     } catch {
       // ignore user-gesture lock errors
@@ -195,8 +193,7 @@ export default function BreathingCircle() {
       } catch {
         // ignore
       }
-      audioEl.muted = prevMuted;
-      audioEl.volume = prevVolume;
+      // Leave muted/volume at 0; we will unmute when the real cue plays.
     }
   };
 
@@ -496,6 +493,7 @@ export default function BreathingCircle() {
 
   // Phase audio cues
   useEffect(() => {
+    const normalizedFxVolume = Math.min(Math.max(fxVolume, 0), 1);
     if (
       !isBreathingPhaseActive ||
       !soundOn ||
@@ -529,6 +527,8 @@ export default function BreathingCircle() {
     if (!el) return;
 
     currentAudioRef.current = el;
+    el.muted = false;
+    el.volume = normalizedFxVolume;
 
     // 🔑 Safari-friendly micro-delay (one task)
     setTimeout(() => {
@@ -546,6 +546,7 @@ export default function BreathingCircle() {
     preset,
     voiceType,
     useBeep,
+    fxVolume,
   ]);
 
 
