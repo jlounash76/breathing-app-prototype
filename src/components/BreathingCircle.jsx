@@ -167,11 +167,53 @@ export default function BreathingCircle() {
     },
   };
   const backgroundMusicRef = useRef(null);
-const beepRefs = {
+  const beepRefs = {
     inhale: useRef(null),
     hold: useRef(null),
     exhale: useRef(null),
   };
+
+  const unlockAndPreloadAudio = async () => {
+    const all = [];
+
+    // Voice cues
+    for (const set of Object.values(audioRefs)) {
+      for (const ref of Object.values(set)) {
+        if (ref?.current) all.push(ref.current);
+      }
+    }
+
+    // Beeps
+    for (const ref of Object.values(beepRefs)) {
+      if (ref?.current) all.push(ref.current);
+    }
+
+    // Background music (if any)
+    if (backgroundMusicRef?.current) {
+      all.push(backgroundMusicRef.current);
+    }
+
+    await Promise.allSettled(
+      all.map(async (el) => {
+        try {
+          el.preload = "auto";
+          el.load?.();
+
+          // Safari unlock trick
+          const prevVolume = el.volume;
+          el.volume = 0;
+          await el.play();
+          el.pause();
+          el.currentTime = 0;
+          el.volume = prevVolume;
+        } catch {
+          // ignore
+        }
+      })
+    );
+  };
+
+  const currentAudioRef = useRef(null);
 
   const phases = PRESETS[preset];
   const currentPhase =
@@ -391,38 +433,59 @@ const beepRefs = {
 
   // Phase audio cues
   useEffect(() => {
-    if (!running || phaseIndex === null) {
-      prevPhaseIndexRef.current = phaseIndex;
-      return;
-    }
-    if (!soundOn || isPaused) return;
-    if (prevPhaseIndexRef.current === phaseIndex) return;
+    if (!running || phaseIndex === null || !soundOn || isPaused) return;
+
+    const prev = prevPhaseIndexRef.current;
+    prevPhaseIndexRef.current = phaseIndex;
+
+    // Fire only on real transition
+    if (prev === phaseIndex) return;
 
     const presetPhases = PRESETS[preset];
-    const phaseRatio = presetPhases?.[phaseIndex];
-    if (!presetPhases || phaseRatio <= 0) return;
+    if (!presetPhases) return;
 
     const phaseName = getPhaseNameForPreset(preset, phaseIndex);
     if (!phaseName) return;
 
-    prevPhaseIndexRef.current = phaseIndex;
-
-    if (useBeep) {
-      const beepKey = PHASE_MAP[phaseName];
-      const beepAudio = beepRefs[beepKey]?.current;
-      if (!beepAudio) return;
-      beepAudio.currentTime = 0;
-      beepAudio.play().catch(() => {});
-      return;
+    // Stop previous cue (prevents overlap / queueing bugs)
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+      } catch {}
+      currentAudioRef.current = null;
     }
 
-    const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
-    const audio = voiceSet?.[phaseName]?.current;
-    if (!audio) return;
+    let el = null;
 
-    audio.currentTime = 0;
-    audio.play().catch(() => {});
-  }, [running, phaseIndex, soundOn, useBeep, preset, voiceType, isPaused]);
+    if (useBeep) {
+      el = beepRefs[phaseName]?.current ?? null;
+    } else {
+      const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
+      el = voiceSet?.[phaseName]?.current ?? null;
+    }
+
+    if (!el) return;
+
+    currentAudioRef.current = el;
+
+    try {
+      el.currentTime = 0;
+      const p = el.play();
+      if (p?.catch) p.catch(() => {});
+    } catch {
+      // ignore
+    }
+  }, [
+    running,
+    phaseIndex,
+    soundOn,
+    isPaused,
+    preset,
+    voiceType,
+    useBeep,
+  ]);
+
 
   // Preview animation for unit duration selection
   useEffect(() => {
@@ -457,7 +520,21 @@ const beepRefs = {
     setCountdownPausedStep(null);
   };
 
-  const startExercise = () => {
+  const stopAllAudio = () => {
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+      } catch {}
+      currentAudioRef.current = null;
+    }
+    prevPhaseIndexRef.current = null;
+  };
+
+
+  const startExercise = async () => {
+    await unlockAndPreloadAudio(); // 🔑 must be inside user gesture
+
     resetPauseState();
     setRoundCounter(0);
     setPhaseIndex(null);
@@ -737,12 +814,12 @@ const beepRefs = {
           alt="Breathing App logo"
           className="w-[24rem] h-[24rem] object-contain"
         />
-        <div className="grid grid-cols-3 gap-4 w-[70%] mt-1 mx-auto">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full max-w-[24rem] mt-1 mx-auto">
           {menuItems.map((item) => (
             <button
               key={item.key}
               onClick={() => handleMenuNavigation(item.destination)}
-              className="rounded-2xl bg-[#00a0b2] hover:bg-[#51acbe] text-white transition shadow-lg min-h-[3.5rem] flex items-center justify-center text-center text-base font-normal"
+              className="rounded-2xl bg-[#00a0b2] hover:bg-[#51acbe] text-white transition shadow-lg min-h-[3rem] sm:min-h-[3.5rem] px-2 flex items-center justify-center text-center text-sm sm:text-base font-normal"
             >
               {item.label}
             </button>
@@ -1088,10 +1165,9 @@ const beepRefs = {
           <li>Unlimited practice sessions.</li>
           <li>More breathing patterns and exercises.</li>
           <li>Personalize your experience with a selection of new sounds and visuals.</li>
-          <li>Unlock Performance, Yogic and Meditation packs to deepen your practice with in-app purchases.</li>
+          <li>Unlock Performance, Yogic, Asleep & Awake and Meditation packs to deepen your practice with in-app purchases.</li>
           <li>Save your favourite exercises and themes.</li>
           <li>Toggle Haptic feedback and dark or light mode.</li>
-          <li>Wake-up and sleep functions.</li>
           <li>Video tutorials and scientific research updates.</li>
           <li>Commit yourself with access to session history and statistics.</li>
           <li>Turn on notifications, engage in streaks and earn badges.</li>
