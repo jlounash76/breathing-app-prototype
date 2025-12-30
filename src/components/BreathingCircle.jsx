@@ -174,63 +174,59 @@ export default function BreathingCircle() {
     exhale: useRef(null),
   };
 
-  const unlockAudioOnce = async () => {
-    // Choose ONE audio element to unlock Safari
-    const sample =
-      (useBeep
-        ? beepRefs.inhale?.current
-        : audioRefs[voiceType]?.inhale?.current) ??
-      audioRefs.male?.inhale?.current;
+  const playSilently = async (audioEl) => {
+    if (!audioEl) return;
+    audioEl.preload = "auto";
+    audioEl.load?.();
 
-    if (!sample) return;
+    const prevMuted = audioEl.muted;
+    const prevVolume = audioEl.volume;
 
     try {
-      sample.preload = "auto";
-      sample.load?.();
-
-      const prevVolume = sample.volume;
-      sample.volume = 0;
-
-      await sample.play();
-      sample.pause();
-      sample.currentTime = 0;
-
-      sample.volume = prevVolume;
+      audioEl.muted = true;
+      audioEl.volume = 0;
+      await audioEl.play();
     } catch {
-      // ignore
+      // ignore user-gesture lock errors
+    } finally {
+      try {
+        audioEl.pause();
+        audioEl.currentTime = 0;
+      } catch {
+        // ignore
+      }
+      audioEl.muted = prevMuted;
+      audioEl.volume = prevVolume;
     }
   };
 
+  const unlockAudioOnce = async () => {
+    if (!soundOn) return;
+
+    const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
+    const sample = useBeep
+      ? beepRefs.inhale?.current
+      : voiceSet?.inhale?.current ?? audioRefs.male?.inhale?.current;
+
+    await playSilently(sample);
+  };
+
   const primeVoiceAudio = async () => {
-  const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
-  if (!voiceSet) return;
+    if (!soundOn || useBeep) return;
+    const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
+    if (!voiceSet) return;
 
-  // Prime only the 3 phase cues
-  const toPrime = [
-    voiceSet.inhale?.current,
-    voiceSet.hold?.current,
-    voiceSet.exhale?.current,
-  ].filter(Boolean);
+    // Prime only the 3 phase cues
+    const toPrime = [
+      voiceSet.inhale?.current,
+      voiceSet.hold?.current,
+      voiceSet.exhale?.current,
+    ].filter(Boolean);
 
-  for (const el of toPrime) {
-    try {
-      el.preload = "auto";
-      el.load?.();
-
-      const prevVolume = el.volume;
-      el.volume = 0;
-
-      // Play a tiny slice, then stop
-      await el.play();
-      el.pause();
-      el.currentTime = 0;
-
-      el.volume = prevVolume;
-    } catch {
-      // ignore Safari quirks
+    for (const el of toPrime) {
+      await playSilently(el);
     }
-  }
-};
+  };
 
 
   const unlockAndPreloadAudio = async () => {
@@ -593,24 +589,27 @@ export default function BreathingCircle() {
   };
 
   const resetAudioState = () => {
-  if (currentAudioRef.current) {
-    try {
-      currentAudioRef.current.pause();
-      currentAudioRef.current.currentTime = 0;
-    } catch {}
-    currentAudioRef.current = null;
-  }
-  prevPhaseIndexRef.current = null;
-  audioReadyRef.current = false;
-};
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+      } catch {}
+      currentAudioRef.current = null;
+    }
+    prevPhaseIndexRef.current = null;
+    audioReadyRef.current = false;
+  };
 
   const startExercise = async () => {
-  // 1) Unlock generic audio (beep or voice)
-    await unlockAudioOnce();
+    resetAudioState();
+    if (soundOn) {
+      // 1) Unlock generic audio (beep or voice)
+      await unlockAudioOnce();
 
-  // 2) PRIME voice cues so first inhale never drops
-    if (!useBeep) {
-      await primeVoiceAudio();
+      // 2) PRIME voice cues so first inhale never drops
+      if (!useBeep) {
+        await primeVoiceAudio();
+      }
     }
 
     resetPauseState();
