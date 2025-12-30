@@ -494,15 +494,16 @@ export default function BreathingCircle() {
 
   // Phase audio cues
   useEffect(() => {
-  if (
-    !running ||
-    phaseIndex === null ||
-    !soundOn ||
-    isPaused ||
-    !audioReadyRef.current
-  ) {
-    return;
-  }
+    if (configStep !== null) return;
+    if (
+      !running ||
+      phaseIndex === null ||
+      !soundOn ||
+      isPaused ||
+      !audioReadyRef.current
+    ) {
+      return;
+    }
 
   const prev = prevPhaseIndexRef.current;
   prevPhaseIndexRef.current = phaseIndex;
