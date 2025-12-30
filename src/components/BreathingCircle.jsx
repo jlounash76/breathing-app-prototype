@@ -329,12 +329,13 @@ export default function BreathingCircle() {
       setPhaseIndex(0);
       setRoundCounter(1);
       audioReadyRef.current = true; // 🔑 audio now allowed
+      triggerPhaseCue(getPhaseNameForPreset(preset, 0));
       return;
     }
 
     const t = setTimeout(() => setCountdownStep((step) => step + 1), 1000);
     return () => clearTimeout(t);
-  }, [countdownStep]);
+  }, [countdownStep, preset]);
 
   // Phase timing & transitions
   useEffect(() => {
@@ -352,7 +353,6 @@ export default function BreathingCircle() {
     if (!resumingFromPause) {
       setPhaseSecond(0);
       setPhaseProgress(0);
-      triggerPhaseCue(currentPhaseName);
     }
 
     resumeFromPauseRef.current = false;
@@ -396,7 +396,10 @@ export default function BreathingCircle() {
         });
       }
 
-      if (running) setPhaseIndex(next);
+      if (running) {
+        triggerPhaseCue(getPhaseNameForPreset(preset, next));
+        setPhaseIndex(next);
+      }
     };
 
     const remainingMs = Math.max(phaseLengthMs - initialElapsed, 0);
