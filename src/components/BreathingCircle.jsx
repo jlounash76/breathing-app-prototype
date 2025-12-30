@@ -514,14 +514,8 @@ export default function BreathingCircle() {
     const phaseName = getPhaseNameForPreset(preset, phaseIndex);
     if (!phaseName) return;
 
-    // Stop previous sound
-    if (currentAudioRef.current) {
-      try {
-        currentAudioRef.current.pause();
-        currentAudioRef.current.currentTime = 0;
-      } catch {}
-      currentAudioRef.current = null;
-    }
+        // Stop previous sound
+        stopCurrentCue();
 
     let el = null;
 
@@ -588,21 +582,24 @@ export default function BreathingCircle() {
     setCountdownPausedStep(null);
   };
 
+  const stopCurrentCue = () => {
+    if (!currentAudioRef.current) return;
+    try {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.currentTime = 0;
+    } catch {}
+    currentAudioRef.current = null;
+  };
+
   const resetAudioState = () => {
-    if (currentAudioRef.current) {
-      try {
-        currentAudioRef.current.pause();
-        currentAudioRef.current.currentTime = 0;
-      } catch {}
-      currentAudioRef.current = null;
-    }
+    stopCurrentCue();
     prevPhaseIndexRef.current = null;
     audioReadyRef.current = false;
   };
 
   const startExercise = async () => {
     resetAudioState();
-    if (soundOn) {
+    if (soundOn && configStep !== null) {
       // 1) Unlock generic audio (beep or voice)
       await unlockAudioOnce();
 
@@ -697,6 +694,7 @@ export default function BreathingCircle() {
       setRoundCounter(0);
       setPhaseProgress(0);
       resetPauseState();
+      resetAudioState();
     }
 
     if (isCountdownActive) {
