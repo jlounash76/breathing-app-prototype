@@ -166,12 +166,72 @@ export default function BreathingCircle() {
       exhale: useRef(null),
     },
   };
+  const audioReadyRef = useRef(false);
   const backgroundMusicRef = useRef(null);
   const beepRefs = {
     inhale: useRef(null),
     hold: useRef(null),
     exhale: useRef(null),
   };
+
+  const unlockAudioOnce = async () => {
+    // Choose ONE audio element to unlock Safari
+    const sample =
+      (useBeep
+        ? beepRefs.inhale?.current
+        : audioRefs[voiceType]?.inhale?.current) ??
+      audioRefs.male?.inhale?.current;
+
+    if (!sample) return;
+
+    try {
+      sample.preload = "auto";
+      sample.load?.();
+
+      const prevVolume = sample.volume;
+      sample.volume = 0;
+
+      await sample.play();
+      sample.pause();
+      sample.currentTime = 0;
+
+      sample.volume = prevVolume;
+    } catch {
+      // ignore
+    }
+  };
+
+  const primeVoiceAudio = async () => {
+  const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
+  if (!voiceSet) return;
+
+  // Prime only the 3 phase cues
+  const toPrime = [
+    voiceSet.inhale?.current,
+    voiceSet.hold?.current,
+    voiceSet.exhale?.current,
+  ].filter(Boolean);
+
+  for (const el of toPrime) {
+    try {
+      el.preload = "auto";
+      el.load?.();
+
+      const prevVolume = el.volume;
+      el.volume = 0;
+
+      // Play a tiny slice, then stop
+      await el.play();
+      el.pause();
+      el.currentTime = 0;
+
+      el.volume = prevVolume;
+    } catch {
+      // ignore Safari quirks
+    }
+  }
+};
+
 
   const unlockAndPreloadAudio = async () => {
     const all = [];
@@ -260,6 +320,7 @@ export default function BreathingCircle() {
       setRunning(true);
       setPhaseIndex(0);
       setRoundCounter(1);
+      audioReadyRef.current = true; // 🔑 audio now allowed
       return;
     }
 
@@ -433,58 +494,64 @@ export default function BreathingCircle() {
 
   // Phase audio cues
   useEffect(() => {
-    if (!running || phaseIndex === null || !soundOn || isPaused) return;
+  if (
+    !running ||
+    phaseIndex === null ||
+    !soundOn ||
+    isPaused ||
+    !audioReadyRef.current
+  ) {
+    return;
+  }
 
-    const prev = prevPhaseIndexRef.current;
-    prevPhaseIndexRef.current = phaseIndex;
+  const prev = prevPhaseIndexRef.current;
+  prevPhaseIndexRef.current = phaseIndex;
 
-    // Fire only on real transition
-    if (prev === phaseIndex) return;
+  // Only on real transition
+  if (prev === phaseIndex) return;
 
-    const presetPhases = PRESETS[preset];
-    if (!presetPhases) return;
+  const phaseName = getPhaseNameForPreset(preset, phaseIndex);
+  if (!phaseName) return;
 
-    const phaseName = getPhaseNameForPreset(preset, phaseIndex);
-    if (!phaseName) return;
+  // Stop previous sound
+  if (currentAudioRef.current) {
+    try {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.currentTime = 0;
+    } catch {}
+    currentAudioRef.current = null;
+  }
 
-    // Stop previous cue (prevents overlap / queueing bugs)
-    if (currentAudioRef.current) {
-      try {
-        currentAudioRef.current.pause();
-        currentAudioRef.current.currentTime = 0;
-      } catch {}
-      currentAudioRef.current = null;
-    }
+  let el = null;
 
-    let el = null;
+  if (useBeep) {
+    el = beepRefs[phaseName]?.current ?? null;
+  } else {
+    const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
+    el = voiceSet?.[phaseName]?.current ?? null;
+  }
 
-    if (useBeep) {
-      el = beepRefs[phaseName]?.current ?? null;
-    } else {
-      const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
-      el = voiceSet?.[phaseName]?.current ?? null;
-    }
+  if (!el) return;
 
-    if (!el) return;
+  currentAudioRef.current = el;
 
-    currentAudioRef.current = el;
-
+  // 🔑 Safari-friendly micro-delay (one task)
+  setTimeout(() => {
     try {
       el.currentTime = 0;
       const p = el.play();
       if (p?.catch) p.catch(() => {});
-    } catch {
-      // ignore
-    }
-  }, [
-    running,
-    phaseIndex,
-    soundOn,
-    isPaused,
-    preset,
-    voiceType,
-    useBeep,
-  ]);
+    } catch {}
+  }, 0);
+}, [
+  running,
+  phaseIndex,
+  soundOn,
+  isPaused,
+  preset,
+  voiceType,
+  useBeep,
+]);
 
 
   // Preview animation for unit duration selection
@@ -520,20 +587,26 @@ export default function BreathingCircle() {
     setCountdownPausedStep(null);
   };
 
-  const stopAllAudio = () => {
-    if (currentAudioRef.current) {
-      try {
-        currentAudioRef.current.pause();
-        currentAudioRef.current.currentTime = 0;
-      } catch {}
-      currentAudioRef.current = null;
-    }
-    prevPhaseIndexRef.current = null;
-  };
-
+  const resetAudioState = () => {
+  if (currentAudioRef.current) {
+    try {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.currentTime = 0;
+    } catch {}
+    currentAudioRef.current = null;
+  }
+  prevPhaseIndexRef.current = null;
+  audioReadyRef.current = false;
+};
 
   const startExercise = async () => {
-    await unlockAndPreloadAudio(); // 🔑 must be inside user gesture
+  // 1) Unlock generic audio (beep or voice)
+    await unlockAudioOnce();
+
+  // 2) PRIME voice cues so first inhale never drops
+    if (!useBeep) {
+      await primeVoiceAudio();
+    }
 
     resetPauseState();
     setRoundCounter(0);
@@ -665,6 +738,7 @@ export default function BreathingCircle() {
           if (value === "off") {
             setSoundOn(false);
             setUseBeep(false);
+            setFxVolume(0);
           } else if (value === "beep") {
             setSoundOn(true);
             setUseBeep(true);
@@ -1215,7 +1289,15 @@ export default function BreathingCircle() {
             min="0"
             max="100"
             value={Math.round(fxVolume * 100)}
-            onChange={(e) => setFxVolume(parseInt(e.target.value, 10) / 100)}
+            onChange={(e) => {
+              const value = parseInt(e.target.value, 10) / 100;
+              setFxVolume(value);
+              if (value > 0) {
+                setSoundOn(true);
+                setUseBeep(false);
+                setVoiceType("male");
+              }
+            }}
             className="w-full accent-[#106f87]"
             style={{ accentColor: "#106f87" }}
           />
