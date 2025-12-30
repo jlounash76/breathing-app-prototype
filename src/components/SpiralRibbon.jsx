@@ -8,8 +8,25 @@ const DEFAULT_SETTINGS = {
   glowColor: "rgba(37,135,158,0.45)",
 };
 
-const clamp01 = (value) => Math.min(Math.max(value, 0), 1);
+const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
+
+// Fixed orientation so the spiral never “flips”
 const BASE_ANGLE = Math.PI / 2;
+
+// Map (phase, phaseProgress) -> progress in [0..1]
+// inhale: 0 -> 1
+// hold:  either 1 (normal) or 0 (if holdFollowsExhale)
+// exhale: 1 -> 0
+function getDesiredProgress(phase, phaseProgress, holdFollowsExhale) {
+  const p = typeof phaseProgress === "number" ? phaseProgress : 0;
+  const t = clamp01(p);
+  const ph = phase ?? "inhale";
+
+  if (ph === "inhale") return t;
+  if (ph === "exhale") return 1 - t;
+  // hold
+  return holdFollowsExhale ? 0 : 1;
+}
 
 export default function SpiralRibbon({
   phase = "inhale",
@@ -18,43 +35,22 @@ export default function SpiralRibbon({
   settings = {},
 }) {
   const canvasRef = useRef(null);
-  const animationFrameRef = useRef(null);
-  const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
-  const targetProgressRef = useRef(0);
-  const renderedProgressRef = useRef(0);
-  const holdStableProgressRef = useRef(null);
-  const lastPhaseRef = useRef(null);
-  const lastProgressRef = useRef(0);
-  const optionsRef = useRef({ ...DEFAULT_SETTINGS, ...settings });
+  const rafRef = useRef(null);
 
-  // Keep drawing options in a ref so the render loop can read updated values
+  const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
+  const optsRef = useRef({ ...DEFAULT_SETTINGS, ...settings });
+
+  // Render state owned ONLY by the render loop
+  const renderedProgressRef = useRef(0);
+  const prevPhaseRef = useRef(phase ?? "inhale");
+  const prevDesiredRef = useRef(0);
+
+  // Keep options updated
   useEffect(() => {
-    optionsRef.current = { ...DEFAULT_SETTINGS, ...settings };
+    optsRef.current = { ...DEFAULT_SETTINGS, ...settings };
   }, [settings]);
 
-  // Convert the breathing phase progress into spiral progress targets.
-  useEffect(() => {
-    const normalizedPhase = phase ?? "inhale";
-    const normalizedProgress = typeof phaseProgress === "number" ? phaseProgress : 0;
-
-    let spiralProgress = 0;
-    if (normalizedPhase === "inhale") {
-      spiralProgress = normalizedProgress;
-      holdStableProgressRef.current = null;
-    } else if (normalizedPhase === "hold") {
-      if (holdStableProgressRef.current === null) {
-        holdStableProgressRef.current = holdFollowsExhale ? 0 : 1;
-      }
-      spiralProgress = holdStableProgressRef.current;
-    } else if (normalizedPhase === "exhale") {
-      spiralProgress = 1 - normalizedProgress;
-      holdStableProgressRef.current = null;
-    }
-
-    targetProgressRef.current = clamp01(spiralProgress);
-  }, [phase, phaseProgress, holdFollowsExhale]);
-
-  // Resize canvas to match parent bounds and devicePixelRatio.
+  // Resize canvas to match parent bounds and DPR
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -62,11 +58,12 @@ export default function SpiralRibbon({
     const updateSize = () => {
       const parent = canvas.parentElement;
       if (!parent) return;
+
       const rect = parent.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
 
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
 
@@ -76,16 +73,16 @@ export default function SpiralRibbon({
     updateSize();
 
     if (typeof ResizeObserver !== "undefined") {
-      const observer = new ResizeObserver(updateSize);
-      observer.observe(canvas.parentElement || canvas);
-      return () => observer.disconnect();
+      const obs = new ResizeObserver(updateSize);
+      obs.observe(canvas.parentElement || canvas);
+      return () => obs.disconnect();
     }
 
     window.addEventListener("resize", updateSize);
     return () => window.removeEventListener("resize", updateSize);
   }, []);
 
-  // Core drawing loop (requestAnimationFrame) for the spiral ribbon.
+  // Draw loop
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -94,81 +91,81 @@ export default function SpiralRibbon({
     const render = () => {
       const { width, height, dpr } = sizeRef.current;
       if (!width || !height) {
-        animationFrameRef.current = requestAnimationFrame(render);
+        rafRef.current = requestAnimationFrame(render);
         return;
       }
 
+      // Compute desired progress deterministically from props
       const currentPhase = phase ?? "inhale";
-      const phaseStartValue =
-        currentPhase === "inhale" ? 0 : currentPhase === "exhale" ? 1 : target;
-      const target = targetProgressRef.current;
-      const current = renderedProgressRef.current;
-      const phaseChanged = lastPhaseRef.current !== currentPhase;
-      const progressStartChanged = phaseProgress === 0 && lastProgressRef.current !== 0;
+      const desired = getDesiredProgress(currentPhase, phaseProgress, holdFollowsExhale);
 
-      let snappedThisFrame = false;
-      
-      if (phaseChanged || progressStartChanged) {
-        renderedProgressRef.current = phaseStartValue;
-        snappedThisFrame = true;
+      // Boundary detection:
+      // - if phase changed, snap (prevents flicker + rotation jumps)
+      // - if we’re at the exact start/end of a phase (phaseProgress 0 or 1), snap
+      const prevPhase = prevPhaseRef.current;
+      const phaseChanged = prevPhase !== currentPhase;
+
+      const pp = clamp01(typeof phaseProgress === "number" ? phaseProgress : 0);
+      const atBoundary = pp === 0 || pp === 1;
+
+      // Decide snap vs ease
+      if (phaseChanged || atBoundary) {
+        renderedProgressRef.current = desired;
+      } else if (currentPhase === "hold") {
+        // Hold must be perfectly still
+        renderedProgressRef.current = desired;
+      } else {
+        // Gentle easing only within inhale/exhale (never at boundaries)
+        const cur = renderedProgressRef.current;
+        const next = cur + (desired - cur) * 0.18;
+        renderedProgressRef.current = Math.abs(next - desired) < 0.0002 ? desired : clamp01(next);
       }
 
-      if (currentPhase === "hold") {
-        renderedProgressRef.current = target;
-      } else if (!snappedThisFrame && renderedProgressRef.current !== target) {
-        let nextProgress = renderedProgressRef.current + (target - renderedProgressRef.current) * 0.2;
-        
-        if (Math.abs(nextProgress - target) < 0.0001) {
-          nextProgress = target;
-        }
-        renderedProgressRef.current = clamp01(nextProgress);
-      }
+      prevPhaseRef.current = currentPhase;
+      prevDesiredRef.current = desired;
 
-      lastPhaseRef.current = currentPhase;
-      lastProgressRef.current = phaseProgress;
-
+      // Clear
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const {
-        maxLoops,
-        loopSpacing,
-        lineWidth,
-        strokeColor,
-        glowColor,
-      } = optionsRef.current;
+      const { maxLoops, loopSpacing, lineWidth, strokeColor, glowColor } = optsRef.current;
 
-      const maxTheta = Math.PI * 2 * maxLoops;
-      const visibleTheta = maxTheta * renderedProgressRef.current;
-      const centerX = width / 2;
-      const centerY = height / 2;
+      const maxTheta = Math.PI * 2 * Math.max(0, maxLoops);
+      const progress = renderedProgressRef.current;
+
+      // If progress is 0, draw nothing (prevents tiny “pre-inhale” segment)
+      if (maxTheta <= 0 || progress <= 0) {
+        rafRef.current = requestAnimationFrame(render);
+        return;
+      }
+
+      const visibleTheta = maxTheta * progress;
+
+      const cx = width / 2;
+      const cy = height / 2;
+
       const availableRadius = Math.min(width, height) * 0.5 - lineWidth;
 
-      // Loop spacing defines how tight the spiral is (distance between arms ≈ 2πb).
       const spacingB = loopSpacing / (2 * Math.PI);
       const spacingRadius = spacingB * maxTheta;
       const spiralRadius = Math.min(availableRadius, spacingRadius);
-      const spiralScale = maxTheta > 0 ? spiralRadius / maxTheta : 0;
-      const thetaStep = Math.max(maxTheta / 900, 0.01);
+
+      const spiralScale = spiralRadius / maxTheta;
+
+      // Constant step count makes motion consistent across devices
+      const steps = 900;
+      const thetaStep = visibleTheta / steps;
 
       ctx.beginPath();
-      ctx.moveTo(centerX, centerY);
+      ctx.moveTo(cx, cy);
 
-      for (let theta = 0; theta <= visibleTheta; theta += thetaStep) {
+      for (let i = 0; i <= steps; i++) {
+        const theta = i * thetaStep;
         const r = spiralScale * theta;
-        const angle = theta + BASE_ANGLE;
-        const x = centerX + r * Math.cos(angle);
-        const y = centerY + r * Math.sin(angle);
-        ctx.lineTo(x, y);
+        const a = theta + BASE_ANGLE;
+        ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
       }
-
-      // Ensure the spiral reaches the exact end of the visible arc.
-      const finalR = spiralScale * visibleTheta;
-      const finalAngle = visibleTheta + BASE_ANGLE;
-      const finalX = centerX + finalR * Math.cos(finalAngle);
-      const finalY = centerY + finalR * Math.sin(finalAngle);
-      ctx.lineTo(finalX, finalY);
 
       ctx.lineWidth = lineWidth;
       ctx.lineCap = "round";
@@ -178,19 +175,19 @@ export default function SpiralRibbon({
       ctx.strokeStyle = strokeColor;
       ctx.globalAlpha = 0.95;
       ctx.stroke();
+
+      // Reset
       ctx.shadowBlur = 0;
       ctx.globalAlpha = 1;
 
-      animationFrameRef.current = requestAnimationFrame(render);
+      rafRef.current = requestAnimationFrame(render);
     };
 
-    animationFrameRef.current = requestAnimationFrame(render);
+    rafRef.current = requestAnimationFrame(render);
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, []);
+  }, [phase, phaseProgress, holdFollowsExhale]);
 
   return <canvas ref={canvasRef} className="h-full w-full" />;
 }
