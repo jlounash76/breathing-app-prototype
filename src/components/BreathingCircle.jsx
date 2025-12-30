@@ -200,27 +200,43 @@ export default function BreathingCircle() {
     if (!soundOn) return;
 
     const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
-    const sample = useBeep
-      ? beepRefs.inhale?.current
-      : voiceSet?.inhale?.current ?? audioRefs.male?.inhale?.current;
+    const candidates = useBeep
+      ? [
+          beepRefs.inhale?.current,
+          beepRefs.hold?.current,
+          beepRefs.exhale?.current,
+        ]
+      : [
+          voiceSet?.inhale?.current,
+          voiceSet?.hold?.current,
+          voiceSet?.exhale?.current,
+          audioRefs.male?.inhale?.current,
+        ];
 
-    await playSilently(sample);
+    const sample = candidates.find(Boolean);
+    if (sample) await playSilently(sample);
   };
 
-  const primeVoiceAudio = async () => {
-    if (!soundOn || useBeep) return;
-    const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
-    if (!voiceSet) return;
+  const primePhaseCues = async () => {
+    if (!soundOn) return;
 
-    // Prime only the 3 phase cues
-    const toPrime = [
-      voiceSet.inhale?.current,
-      voiceSet.hold?.current,
-      voiceSet.exhale?.current,
-    ].filter(Boolean);
+    const targets = useBeep
+      ? [
+          beepRefs.inhale?.current,
+          beepRefs.hold?.current,
+          beepRefs.exhale?.current,
+        ]
+      : (() => {
+          const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
+          return [
+            voiceSet?.inhale?.current,
+            voiceSet?.hold?.current,
+            voiceSet?.exhale?.current,
+          ];
+        })();
 
-    for (const el of toPrime) {
-      await playSilently(el);
+    for (const el of targets) {
+      if (el) await playSilently(el);
     }
   };
 
@@ -574,10 +590,8 @@ export default function BreathingCircle() {
       // 1) Unlock generic audio (beep or voice)
       await unlockAudioOnce();
 
-      // 2) PRIME voice cues so first inhale never drops
-      if (!useBeep) {
-        await primeVoiceAudio();
-      }
+      // 2) Prime all phase cues so first loop plays immediately
+      await primePhaseCues();
     }
 
     resetPauseState();
