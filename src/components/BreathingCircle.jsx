@@ -494,64 +494,72 @@ export default function BreathingCircle() {
 
   // Phase audio cues
   useEffect(() => {
-  if (
-    !running ||
-    phaseIndex === null ||
-    !soundOn ||
-    isPaused ||
-    !audioReadyRef.current
-  ) {
-    return;
-  }
+    if (configStep !== null) return;
+    const countdownActive =
+      (countdownStep !== null && countdownStep < COUNTDOWN_SEQUENCE.length) ||
+      countdownPausedStep !== null;
+    if (countdownActive) return;
+    if (
+      !running ||
+      phaseIndex === null ||
+      !soundOn ||
+      isPaused ||
+      !audioReadyRef.current
+    ) {
+      return;
+    }
 
-  const prev = prevPhaseIndexRef.current;
-  prevPhaseIndexRef.current = phaseIndex;
+    const prev = prevPhaseIndexRef.current;
+    prevPhaseIndexRef.current = phaseIndex;
 
-  // Only on real transition
-  if (prev === phaseIndex) return;
+    // Only on real transition
+    if (prev === phaseIndex) return;
 
-  const phaseName = getPhaseNameForPreset(preset, phaseIndex);
-  if (!phaseName) return;
+    const phaseName = getPhaseNameForPreset(preset, phaseIndex);
+    if (!phaseName) return;
 
-  // Stop previous sound
-  if (currentAudioRef.current) {
-    try {
-      currentAudioRef.current.pause();
-      currentAudioRef.current.currentTime = 0;
-    } catch {}
-    currentAudioRef.current = null;
-  }
+    // Stop previous sound
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+      } catch {}
+      currentAudioRef.current = null;
+    }
 
-  let el = null;
+    let el = null;
 
-  if (useBeep) {
-    el = beepRefs[phaseName]?.current ?? null;
-  } else {
-    const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
-    el = voiceSet?.[phaseName]?.current ?? null;
-  }
+    if (useBeep) {
+      el = beepRefs[phaseName]?.current ?? null;
+    } else {
+      const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
+      el = voiceSet?.[phaseName]?.current ?? null;
+    }
 
-  if (!el) return;
+    if (!el) return;
 
-  currentAudioRef.current = el;
+    currentAudioRef.current = el;
 
-  // 🔑 Safari-friendly micro-delay (one task)
-  setTimeout(() => {
-    try {
-      el.currentTime = 0;
-      const p = el.play();
-      if (p?.catch) p.catch(() => {});
-    } catch {}
-  }, 0);
-}, [
-  running,
-  phaseIndex,
-  soundOn,
-  isPaused,
-  preset,
-  voiceType,
-  useBeep,
-]);
+    // 🔑 Safari-friendly micro-delay (one task)
+    setTimeout(() => {
+      try {
+        el.currentTime = 0;
+        const p = el.play();
+        if (p?.catch) p.catch(() => {});
+      } catch {}
+    }, 0);
+  }, [
+    configStep,
+    countdownStep,
+    countdownPausedStep,
+    running,
+    phaseIndex,
+    soundOn,
+    isPaused,
+    preset,
+    voiceType,
+    useBeep,
+  ]);
 
 
   // Preview animation for unit duration selection
@@ -1010,7 +1018,7 @@ export default function BreathingCircle() {
               <br /><br /><span className="font-semibold">ALWAYS BREATHE THROUGH NOSE.</span>
             </p>
           </div>
-          <div className="flex flex-wrap w-full justify-center pt-4 gap-3">
+          <div className="grid grid-cols-3 gap-2 w-full pt-4">
             {renderMenuButton(`${buttonBaseClasses} flex-1`)}
             {renderSettingsButton(`${buttonBaseClasses} flex-1`)}
             <button
@@ -1066,7 +1074,7 @@ export default function BreathingCircle() {
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap w-full justify-center pt-6 gap-3">
+          <div className="grid grid-cols-4 gap-2 w-full pt-6">
             <button
               onClick={() => setConfigStep(1)}
               className={`${buttonBaseClasses} flex-1`}
@@ -1103,7 +1111,7 @@ export default function BreathingCircle() {
               {renderVisualControls()}
             </div>
           </div>
-          <div className="flex flex-wrap w-full justify-center pt-6 gap-3">
+          <div className="grid grid-cols-4 gap-2 w-full pt-6">
             <button
               onClick={() => {
                 resetUnitPreview();
@@ -1149,7 +1157,7 @@ export default function BreathingCircle() {
             Total time ≈ {(totalSeconds / 60).toFixed(1)} minutes.
           </div>
         </div>
-        <div className="flex flex-wrap w-full justify-center pt-6 gap-3">
+        <div className="grid grid-cols-4 gap-2 w-full pt-6">
           <button
             onClick={() => setConfigStep(3)}
             className={`${buttonBaseClasses} flex-1`}
@@ -1189,7 +1197,7 @@ export default function BreathingCircle() {
         </div>
 
         {showRunControls && (
-          <div className="flex flex-wrap w-full justify-center items-center pt-6 gap-3">
+          <div className="grid grid-cols-4 gap-2 w-full pt-6">
             <button
               onClick={() => {
                 setRunning(false);
@@ -1249,7 +1257,7 @@ export default function BreathingCircle() {
           <li>Widgets and smartwatch integration.</li>
         </ul>
       </div>
-      <div className="flex flex-wrap w-full justify-center pt-6 gap-3">
+      <div className="grid grid-cols-2 gap-3 w-full pt-6">
         <button
           className={`${buttonBaseClasses} w-1/2`}
           onClick={closePremiumPage}
