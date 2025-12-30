@@ -494,16 +494,15 @@ export default function BreathingCircle() {
 
   // Phase audio cues
   useEffect(() => {
-    if (configStep !== null) return;
-    if (
-      !running ||
-      phaseIndex === null ||
-      !soundOn ||
-      isPaused ||
-      !audioReadyRef.current
-    ) {
-      return;
-    }
+  if (
+    !running ||
+    phaseIndex === null ||
+    !soundOn ||
+    isPaused ||
+    !audioReadyRef.current
+  ) {
+    return;
+  }
 
   const prev = prevPhaseIndexRef.current;
   prevPhaseIndexRef.current = phaseIndex;
@@ -1011,7 +1010,7 @@ export default function BreathingCircle() {
               <br /><br /><span className="font-semibold">ALWAYS BREATHE THROUGH NOSE.</span>
             </p>
           </div>
-          <div className="flex w-full justify-between pt-4 space-x-3">
+          <div className="flex flex-wrap w-full justify-center pt-4 gap-3">
             {renderMenuButton(`${buttonBaseClasses} flex-1`)}
             {renderSettingsButton(`${buttonBaseClasses} flex-1`)}
             <button
@@ -1067,7 +1066,7 @@ export default function BreathingCircle() {
               </p>
             </div>
           </div>
-          <div className="flex w-full justify-between pt-6 space-x-3">
+          <div className="flex flex-wrap w-full justify-center pt-6 gap-3">
             <button
               onClick={() => setConfigStep(1)}
               className={`${buttonBaseClasses} flex-1`}
@@ -1104,7 +1103,7 @@ export default function BreathingCircle() {
               {renderVisualControls()}
             </div>
           </div>
-          <div className="flex w-full justify-between pt-6 space-x-3">
+          <div className="flex flex-wrap w-full justify-center pt-6 gap-3">
             <button
               onClick={() => {
                 resetUnitPreview();
@@ -1150,7 +1149,7 @@ export default function BreathingCircle() {
             Total time ≈ {(totalSeconds / 60).toFixed(1)} minutes.
           </div>
         </div>
-        <div className="flex w-full justify-between pt-6 space-x-3">
+        <div className="flex flex-wrap w-full justify-center pt-6 gap-3">
           <button
             onClick={() => setConfigStep(3)}
             className={`${buttonBaseClasses} flex-1`}
@@ -1190,7 +1189,7 @@ export default function BreathingCircle() {
         </div>
 
         {showRunControls && (
-          <div className="flex w-full justify-between items-center pt-6 space-x-3">
+          <div className="flex flex-wrap w-full justify-center items-center pt-6 gap-3">
             <button
               onClick={() => {
                 setRunning(false);
@@ -1250,7 +1249,7 @@ export default function BreathingCircle() {
           <li>Widgets and smartwatch integration.</li>
         </ul>
       </div>
-      <div className="flex w-full justify-between pt-6 space-x-3">
+      <div className="flex flex-wrap w-full justify-center pt-6 gap-3">
         <button
           className={`${buttonBaseClasses} w-1/2`}
           onClick={closePremiumPage}
@@ -1324,7 +1323,7 @@ export default function BreathingCircle() {
           </div>
         </div>
       </div>
-      <div className="flex w-full justify-between pt-6 space-x-3">
+      <div className="flex flex-wrap w-full justify-center pt-6 gap-3">
         <button onClick={closeSettings} className={`${buttonBaseClasses} flex-1`}>
           Close
         </button>
