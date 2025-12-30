@@ -24,6 +24,7 @@ export default function SpiralRibbon({
   const renderedProgressRef = useRef(0);
   const holdStableProgressRef = useRef(null);
   const lastPhaseRef = useRef(null);
+  const lastProgressRef = useRef(0);
   const optionsRef = useRef({ ...DEFAULT_SETTINGS, ...settings });
 
   // Keep drawing options in a ref so the render loop can read updated values
@@ -98,21 +99,33 @@ export default function SpiralRibbon({
       }
 
       const currentPhase = phase ?? "inhale";
+      const phaseStartValue =
+        currentPhase === "inhale" ? 0 : currentPhase === "exhale" ? 1 : target;
       const target = targetProgressRef.current;
       const current = renderedProgressRef.current;
+      const phaseChanged = lastPhaseRef.current !== currentPhase;
+      const progressStartChanged = phaseProgress === 0 && lastProgressRef.current !== 0;
 
-      if (lastPhaseRef.current !== currentPhase) {
+      let snappedThisFrame = false;
+      
+      if (phaseChanged || progressStartChanged) {
+        renderedProgressRef.current = phaseStartValue;
+        snappedThisFrame = true;
+      }
+
+      if (currentPhase === "hold") {
         renderedProgressRef.current = target;
-        lastPhaseRef.current = currentPhase;
-      } else if (currentPhase === "hold") {
-        renderedProgressRef.current = target;
-      } else {
-        let nextProgress = current + (target - current) * 0.18;
-        if (Math.abs(nextProgress - target) < 0.0002) {
+      } else if (!snappedThisFrame && renderedProgressRef.current !== target) {
+        let nextProgress = renderedProgressRef.current + (target - renderedProgressRef.current) * 0.2;
+        
+        if (Math.abs(nextProgress - target) < 0.0001) {
           nextProgress = target;
         }
         renderedProgressRef.current = clamp01(nextProgress);
       }
+
+      lastPhaseRef.current = currentPhase;
+      lastProgressRef.current = phaseProgress;
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
