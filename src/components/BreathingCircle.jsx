@@ -147,7 +147,6 @@ export default function BreathingCircle() {
   const phaseDurationRef = useRef(1);
   const pauseElapsedRef = useRef(0);
   const resumeFromPauseRef = useRef(false);
-  const prevPhaseIndexRef = useRef(null);
   const previewInitializedRef = useRef(false);
   const settingsPauseRef = useRef({
     pausedCountdown: false,
@@ -337,6 +336,7 @@ export default function BreathingCircle() {
     if (!resumingFromPause) {
       setPhaseSecond(0);
       setPhaseProgress(0);
+      triggerPhaseCue(currentPhaseName);
     }
 
     resumeFromPauseRef.current = false;
@@ -490,66 +490,6 @@ export default function BreathingCircle() {
     countdownPausedStep !== null;
   const isBreathingPhaseActive =
     running && !isCountdownActive && phaseIndex !== null;
-
-  // Phase audio cues
-  useEffect(() => {
-    const normalizedFxVolume = Math.min(Math.max(fxVolume, 0), 1);
-    if (
-      !isBreathingPhaseActive ||
-      !soundOn ||
-      isPaused ||
-      !audioReadyRef.current
-    ) {
-      return;
-    }
-
-    const prev = prevPhaseIndexRef.current;
-    prevPhaseIndexRef.current = phaseIndex;
-
-    // Only on real transition
-    if (prev === phaseIndex) return;
-
-    const phaseName = getPhaseNameForPreset(preset, phaseIndex);
-    if (!phaseName) return;
-
-        // Stop previous sound
-        stopCurrentCue();
-
-    let el = null;
-
-    if (useBeep) {
-      el = beepRefs[phaseName]?.current ?? null;
-    } else {
-      const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
-      el = voiceSet?.[phaseName]?.current ?? null;
-    }
-
-    if (!el) return;
-
-    currentAudioRef.current = el;
-    el.muted = false;
-    el.volume = normalizedFxVolume;
-
-    // 🔑 Safari-friendly micro-delay (one task)
-    setTimeout(() => {
-      try {
-        el.currentTime = 0;
-        const p = el.play();
-        if (p?.catch) p.catch(() => {});
-      } catch {}
-    }, 0);
-  }, [
-    isBreathingPhaseActive,
-    phaseIndex,
-    soundOn,
-    isPaused,
-    preset,
-    voiceType,
-    useBeep,
-    fxVolume,
-  ]);
-
-
   // Preview animation for unit duration selection
   useEffect(() => {
     if (configStep !== 2) {
@@ -594,8 +534,38 @@ export default function BreathingCircle() {
 
   const resetAudioState = () => {
     stopCurrentCue();
-    prevPhaseIndexRef.current = null;
     audioReadyRef.current = false;
+  };
+
+  const triggerPhaseCue = (phaseName) => {
+    if (!phaseName) return;
+    if (!soundOn || !audioReadyRef.current) return;
+
+    const normalizedVolume = Math.min(Math.max(fxVolume, 0), 1);
+    const key = PHASE_MAP[phaseName] ?? phaseName;
+    let el = null;
+
+    if (useBeep) {
+      el = beepRefs[key]?.current ?? null;
+    } else {
+      const voiceSet = audioRefs[voiceType] ?? audioRefs.male;
+      el = voiceSet?.[key]?.current ?? null;
+    }
+
+    if (!el) return;
+
+    stopCurrentCue();
+
+    currentAudioRef.current = el;
+    el.muted = false;
+    el.volume = normalizedVolume;
+    try {
+      el.currentTime = 0;
+      const playPromise = el.play();
+      if (playPromise?.catch) playPromise.catch(() => {});
+    } catch {
+      // ignore play failures (e.g., browser interruptions)
+    }
   };
 
   const startExercise = async () => {
@@ -613,7 +583,6 @@ export default function BreathingCircle() {
     resetPauseState();
     setRoundCounter(0);
     setPhaseIndex(null);
-    prevPhaseIndexRef.current = null;
     setPhaseSecond(0);
     setPhaseProgress(0);
     setScale(SCALE_SMALL);
