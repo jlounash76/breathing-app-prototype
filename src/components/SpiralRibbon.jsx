@@ -28,6 +28,13 @@ function getDesiredProgress(phase, phaseProgress, holdFollowsExhale) {
   return holdFollowsExhale ? 0 : 1;
 }
 
+function getPhaseStartProgress(phase, holdFollowsExhale) {
+  const ph = phase ?? "inhale";
+  if (ph === "inhale") return 0;
+  if (ph === "exhale") return 1;
+  return holdFollowsExhale ? 0 : 1;
+}
+
 export default function SpiralRibbon({
   phase = "inhale",
   phaseProgress = 0,
@@ -97,7 +104,8 @@ export default function SpiralRibbon({
 
       // Compute desired progress deterministically from props
       const currentPhase = phase ?? "inhale";
-      const desired = getDesiredProgress(currentPhase, phaseProgress, holdFollowsExhale);
+      let desired = getDesiredProgress(currentPhase, phaseProgress, holdFollowsExhale);
+      const phaseStart = getPhaseStartProgress(currentPhase, holdFollowsExhale);
 
       // Boundary detection:
       // - if phase changed, snap (prevents flicker + rotation jumps)
@@ -109,6 +117,10 @@ export default function SpiralRibbon({
       const atBoundary = pp === 0 || pp === 1;
 
       // Decide snap vs ease
+      if (phaseChanged) {
+        desired = phaseStart;
+      }
+
       if (phaseChanged || atBoundary) {
         renderedProgressRef.current = desired;
       } else if (currentPhase === "hold") {

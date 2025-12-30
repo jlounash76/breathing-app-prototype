@@ -134,6 +134,8 @@ export default function BreathingCircle() {
   const [showSettingsPage, setShowSettingsPage] = useState(false);
   const [bgVolume, setBgVolume] = useState(0);
   const [fxVolume, setFxVolume] = useState(1);
+  const [showMainMenu, setShowMainMenu] = useState(false);
+  const [modalReturnTarget, setModalReturnTarget] = useState(null);
 
   const [roundCounter, setRoundCounter] = useState(0);
   const [countdownStep, setCountdownStep] = useState(null);
@@ -180,7 +182,8 @@ const beepRefs = {
 
   const totalSeconds =
     rounds * phases.reduce((sum, x) => sum + x * unitSeconds, 0);
-  const handleUpgradeClick = () => {
+  const handleUpgradeClick = (options = {}) => {
+    const { returnTo = null } = options;
     if (running) {
       setRunning(false);
       setPhaseIndex(null);
@@ -196,7 +199,14 @@ const beepRefs = {
       setIsPaused(false);
     }
 
-    setConfigStep(1);
+    if (returnTo === "menu") {
+      setShowMainMenu(false);
+      setConfigStep(0);
+    } else {
+      setConfigStep(1);
+    }
+
+    setModalReturnTarget(returnTo);
     setShowPremiumPage(true);
   };
   // Countdown before starting
@@ -486,7 +496,8 @@ const beepRefs = {
     resumeFromPauseRef.current = true;
     setIsPaused(true);
   };
-  const openSettings = () => {
+  const openSettings = (options = {}) => {
+    const { returnTo = null } = options;
     const pauseInfo = { pausedCountdown: false, pausedBreathing: false };
 
     if (isCountdownActive && countdownStep !== null) {
@@ -498,6 +509,7 @@ const beepRefs = {
     }
 
     settingsPauseRef.current = pauseInfo;
+    setModalReturnTarget(returnTo);
     setShowSettingsPage(true);
   };
 
@@ -515,11 +527,38 @@ const beepRefs = {
       pausedBreathing: false,
     };
     setShowSettingsPage(false);
+    if (modalReturnTarget === "menu") {
+      setShowMainMenu(true);
+      setConfigStep(0);
+    }
+    setModalReturnTarget(null);
   };
 
   const isCountdownActive =
     (countdownStep !== null && countdownStep < COUNTDOWN_SEQUENCE.length) ||
     countdownPausedStep !== null;
+  const goToMainMenu = () => {
+    if (running) {
+      setRunning(false);
+      setPhaseIndex(null);
+      setScale(1);
+      setRoundCounter(0);
+      setPhaseProgress(0);
+      resetPauseState();
+    }
+
+    if (isCountdownActive) {
+      setCountdownStep(null);
+      setCountdownPausedStep(null);
+      setIsPaused(false);
+    }
+
+    setShowPremiumPage(false);
+    setShowSettingsPage(false);
+    setModalReturnTarget(null);
+    setConfigStep(0);
+    setShowMainMenu(true);
+  };
   const buttonBaseClasses =
     "px-4 py-2 rounded-lg shadow-md bg-[#00b4c7] text-white hover:bg-[#00a0b2] transition";
   const accentButtonClasses =
@@ -571,14 +610,14 @@ const beepRefs = {
       </select>
     );
   };
-  const renderUpgradeButton = (className = accentButtonClasses) => (
-    <button onClick={handleUpgradeClick} className={className}>
-      Upgrade
+  const renderMenuButton = (className = buttonBaseClasses) => (
+    <button onClick={goToMainMenu} className={className}>
+      Menu
     </button>
   );
   const renderSettingsButton = (className = buttonBaseClasses) => (
     <button
-      onClick={openSettings}
+      onClick={() => openSettings()}
       className={`${className} flex items-center justify-center`}
     >
       <span className="text-sm font-semibold">Settings</span>
@@ -668,6 +707,50 @@ const beepRefs = {
 
     return renderCircleVisual();
   };
+  const handleMenuNavigation = (destination) => {
+    if (destination === "exercises") {
+      setShowMainMenu(false);
+      setConfigStep(1);
+      return;
+    }
+    if (destination === "settings") {
+      setShowMainMenu(false);
+      openSettings({ returnTo: "menu" });
+      return;
+    }
+    setShowMainMenu(false);
+    handleUpgradeClick({ returnTo: "menu" });
+  };
+  const renderMainMenu = () => {
+    const menuItems = [
+      { key: "exercises", label: "Exercises", destination: "exercises" },
+      { key: "settings", label: "Settings", destination: "settings" },
+      { key: "statistics", label: "Statistics", destination: "premium" },
+      { key: "themes", label: "Themes", destination: "premium" },
+      { key: "videos", label: "Video tutorials", destination: "premium" },
+      { key: "science", label: "Science of breathing", destination: "premium" },
+    ];
+    return (
+      <div className={`${cardWrapperBase} flex flex-col items-center`}>
+        <img
+          src="/logo.png"
+          alt="Breathing App logo"
+          className="w-[24rem] h-[24rem] object-contain"
+        />
+        <div className="grid grid-cols-3 gap-4 w-[70%] mt-1 mx-auto">
+          {menuItems.map((item) => (
+            <button
+              key={item.key}
+              onClick={() => handleMenuNavigation(item.destination)}
+              className="rounded-2xl bg-[#00a0b2] hover:bg-[#51acbe] text-white transition shadow-lg min-h-[3.5rem] flex items-center justify-center text-center text-base font-normal"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
   const previewPhaseLabel =
     unitPreviewScale === SCALE_BIG ? "Inhale" : "Exhale";
   const showConfig =
@@ -684,24 +767,23 @@ const beepRefs = {
     if (configStep === null) return null;
 
     if (configStep === 0) {
+      if (showMainMenu) {
+        return renderMainMenu();
+      }
       return (
-        <div
-          className="flex flex-col items-center justify-between h-full space-y-4 cursor-pointer select-none"
-          onClick={() => setConfigStep(1)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              setConfigStep(1);
-            }
-          }}
-        >
-          <img
-            src="/logo.png"
-            alt="Breathing App logo"
-            className="w-[24rem] h-[24rem] object-contain"
-          />
+        <div className="flex flex-col items-center justify-between h-full space-y-2 select-none">
+          <button
+            type="button"
+            onClick={() => setShowMainMenu(true)}
+            className="focus:outline-none"
+            aria-label="Open main menu"
+          >
+            <img
+              src="/logo.png"
+              alt="Breathing App logo"
+              className="w-[24rem] h-[24rem] object-contain"
+            />
+          </button>
           <div className="text-sm text-slate-600 text-center leading-relaxed max-w-[23rem]">
             Relieve stress and anxiety. Calm down. Let go. Balance your nervous system. Sleep better.
             Improve concentration. Improve performance. Improve mental clarity. Add focus. Lower blood
@@ -778,13 +860,7 @@ const beepRefs = {
             </p>
           </div>
           <div className="flex w-full justify-between pt-4 space-x-3">
-            <button
-              onClick={() => setConfigStep(0)}
-              className={`${buttonBaseClasses} flex-1`}
-            >
-              Back
-            </button>
-            {renderUpgradeButton(`${accentButtonClasses} flex-1`)}
+            {renderMenuButton(`${buttonBaseClasses} flex-1`)}
             {renderSettingsButton(`${buttonBaseClasses} flex-1`)}
             <button
               onClick={() => {
@@ -846,7 +922,7 @@ const beepRefs = {
             >
               Back
             </button>
-            {renderUpgradeButton(`${accentButtonClasses} flex-1`)}
+            {renderMenuButton(`${buttonBaseClasses} flex-1`)}
             {renderSettingsButton(`${buttonBaseClasses} flex-1`)}
             <button
               onClick={() => setConfigStep(3)}
@@ -886,7 +962,7 @@ const beepRefs = {
             >
               Back
             </button>
-            {renderUpgradeButton(`${accentButtonClasses} flex-1`)}
+            {renderMenuButton(`${buttonBaseClasses} flex-1`)}
             {renderSettingsButton(`${buttonBaseClasses} flex-1`)}
             <button
               onClick={() => setConfigStep(4)}
@@ -929,7 +1005,7 @@ const beepRefs = {
           >
             Back
           </button>
-          {renderUpgradeButton(`${accentButtonClasses} flex-1`)}
+          {renderMenuButton(`${buttonBaseClasses} flex-1`)}
           {renderSettingsButton(`${buttonBaseClasses} flex-1`)}
           <button onClick={startExercise} className={`${buttonBaseClasses} flex-1`}>
             Start
@@ -974,7 +1050,7 @@ const beepRefs = {
             >
               Back
             </button>
-            {renderUpgradeButton(`${accentButtonClasses} flex-1`)}
+            {renderMenuButton(`${buttonBaseClasses} flex-1`)}
             {renderSettingsButton(`${buttonBaseClasses} flex-1`)}
             <button
               onClick={togglePause}
@@ -989,6 +1065,16 @@ const beepRefs = {
     );
   };
 
+  const closePremiumPage = () => {
+    setShowPremiumPage(false);
+    if (modalReturnTarget === "menu") {
+      setShowMainMenu(true);
+      setConfigStep(0);
+    } else {
+      setConfigStep(1);
+    }
+    setModalReturnTarget(null);
+  };
   const renderPremiumPage = () => (
     <div className={configCardWithFooter}>
       <div className="space-y-4">
@@ -1016,10 +1102,7 @@ const beepRefs = {
       <div className="flex w-full justify-between pt-6 space-x-3">
         <button
           className={`${buttonBaseClasses} w-1/2`}
-          onClick={() => {
-            setShowPremiumPage(false);
-            setConfigStep(1);
-          }}
+          onClick={closePremiumPage}
         >
           Back
         </button>
