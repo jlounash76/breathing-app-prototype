@@ -492,16 +492,16 @@ export default function BreathingCircle() {
     applyVolume(beepRefs);
   }, [fxVolume]);
 
+  const isCountdownActive =
+    (countdownStep !== null && countdownStep < COUNTDOWN_SEQUENCE.length) ||
+    countdownPausedStep !== null;
+  const isBreathingPhaseActive =
+    running && !isCountdownActive && phaseIndex !== null;
+
   // Phase audio cues
   useEffect(() => {
-    if (configStep !== null) return;
-    const countdownActive =
-      (countdownStep !== null && countdownStep < COUNTDOWN_SEQUENCE.length) ||
-      countdownPausedStep !== null;
-    if (countdownActive) return;
     if (
-      !running ||
-      phaseIndex === null ||
+      !isBreathingPhaseActive ||
       !soundOn ||
       isPaused ||
       !audioReadyRef.current
@@ -549,10 +549,7 @@ export default function BreathingCircle() {
       } catch {}
     }, 0);
   }, [
-    configStep,
-    countdownStep,
-    countdownPausedStep,
-    running,
+    isBreathingPhaseActive,
     phaseIndex,
     soundOn,
     isPaused,
@@ -619,6 +616,7 @@ export default function BreathingCircle() {
     resetPauseState();
     setRoundCounter(0);
     setPhaseIndex(null);
+    prevPhaseIndexRef.current = null;
     setPhaseSecond(0);
     setPhaseProgress(0);
     setScale(SCALE_SMALL);
@@ -692,9 +690,6 @@ export default function BreathingCircle() {
     setModalReturnTarget(null);
   };
 
-  const isCountdownActive =
-    (countdownStep !== null && countdownStep < COUNTDOWN_SEQUENCE.length) ||
-    countdownPausedStep !== null;
   const goToMainMenu = () => {
     if (running) {
       setRunning(false);
@@ -1184,7 +1179,7 @@ export default function BreathingCircle() {
         <div className="flex flex-col items-center gap-4 flex-1 justify-center w-full">
           <div className="relative w-48 h-48">{renderVisualDisplay()}</div>
 
-          {running && phaseIndex !== null && (
+          {isBreathingPhaseActive && (
             <>
               <div className="text-2xl tracking-wide mt-2">
                 {currentPhaseLabel}
@@ -1257,14 +1252,16 @@ export default function BreathingCircle() {
           <li>Widgets and smartwatch integration.</li>
         </ul>
       </div>
-      <div className="grid grid-cols-2 gap-3 w-full pt-6">
+      <div className="flex w-full justify-center gap-4 pt-6">
         <button
-          className={`${buttonBaseClasses} w-1/2`}
+          className={`${buttonBaseClasses} flex-1 max-w-[8rem] whitespace-nowrap`}
           onClick={closePremiumPage}
         >
           Back
         </button>
-        <button className={`${accentButtonClasses} w-1/2`}>
+        <button
+          className={`${accentButtonClasses} flex-1 max-w-[12rem] whitespace-nowrap`}
+        >
           Get Premium
         </button>
       </div>
